@@ -72,8 +72,8 @@ body {
 
 /* ---------- Views ---------- */
 .view { display: none; }
-.view.active { display: block; animation: fadein .15s ease; }
-@keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
+.view.active { display: block; animation: fadein .18s ease; }
+@keyframes fadein { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
 h1 { font-size: 22px; margin-bottom: 4px; }
 .sub { color: var(--muted); font-size: 13px; margin-bottom: 16px; }
@@ -82,8 +82,10 @@ h1 { font-size: 22px; margin-bottom: 4px; }
 .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 18px; }
 @media (min-width: 900px) { .cards { grid-template-columns: repeat(4, 1fr); } }
 .card {
-  background: var(--card); border: 1px solid var(--line);
+  background: linear-gradient(160deg, var(--card2), var(--card));
+  border: 1px solid var(--line);
   border-radius: var(--radius); padding: 14px;
+  box-shadow: 0 2px 8px rgba(0,0,0,.18);
 }
 .card .label { color: var(--muted); font-size: 12px; margin-bottom: 6px; }
 .card .value { font-size: 20px; font-weight: 700; }
@@ -109,6 +111,20 @@ h1 { font-size: 22px; margin-bottom: 4px; }
 }
 .row:last-child { border-bottom: none; }
 .row:active { background: var(--card2); }
+.row { transition: background .12s ease; }
+.row:hover { background: var(--card2); }
+.row[style*="cursor:default"]:hover { background: none; }
+.row.acc { border-left: 3px solid var(--acc, transparent); padding-left: 11px; }
+.row.isPaid .name, .row.isPaid .amt { opacity: .45; text-decoration: line-through; }
+.rowbtn {
+  background: none; border: none; color: inherit; font: inherit;
+  text-align: left; cursor: pointer; padding: 0; min-width: 0;
+}
+.paidbox {
+  width: 20px; height: 20px; accent-color: var(--accent);
+  cursor: pointer; flex-shrink: 0;
+}
+.paidbox-spacer { width: 20px; flex-shrink: 0; }
 .row .grow { flex: 1; min-width: 0; }
 .row .name { font-size: 15px; font-weight: 500; }
 .row .meta { font-size: 12px; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -251,6 +267,95 @@ h1 { font-size: 22px; margin-bottom: 4px; }
 }
 .clouddot.ok { background: var(--accent2); }
 .clouddot.offline { background: var(--red); }
+
+/* ---------- Progress bars ---------- */
+.progress {
+  height: 10px; background: var(--card); border: 1px solid var(--line);
+  border-radius: 20px; overflow: hidden;
+}
+.progress.sm { height: 6px; margin: 6px 0 4px; max-width: 220px; }
+.progress-bar {
+  height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2));
+  border-radius: 20px; transition: width .4s ease;
+}
+.progress-sub { font-size: 12px; color: var(--muted); margin: 6px 0 14px; }
+
+/* ---------- Delta chips ---------- */
+.delta {
+  display: inline-block; font-size: 11px; font-weight: 600;
+  padding: 1px 7px; border-radius: 20px; margin-top: 6px;
+}
+.delta.good { color: var(--accent2); background: rgba(55,185,108,.12); }
+.delta.bad { color: var(--red); background: rgba(226,89,59,.12); }
+
+/* ---------- Sparkline ---------- */
+.spark { width: 100%; height: 28px; margin-top: 10px; }
+.spark polyline { fill: none; stroke: var(--red); stroke-width: 2; vector-effect: non-scaling-stroke; }
+
+/* ---------- Payday chip ---------- */
+.payday-chip {
+  display: inline-block; background: rgba(201,150,42,.15); color: var(--amber);
+  font-size: 13px; font-weight: 600; padding: 6px 14px; border-radius: 20px;
+  margin: -6px 0 14px;
+}
+
+/* ---------- Mini calendar ---------- */
+.cal {
+  display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px;
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 12px;
+}
+.cal-h { text-align: center; font-size: 11px; color: var(--muted); padding: 2px 0 6px; }
+.cal-d {
+  position: relative; text-align: center; font-size: 12px;
+  padding: 6px 0 10px; border-radius: 8px; color: var(--text);
+}
+.cal-d.today { background: var(--accent); font-weight: 700; }
+.cal-d.payday { box-shadow: inset 0 0 0 1px var(--amber); }
+.cal-dot {
+  position: absolute; bottom: 3px; left: 50%; transform: translateX(-50%);
+  width: 4px; height: 4px; border-radius: 50%; background: var(--red);
+}
+.cal-legend { display: flex; gap: 16px; font-size: 11px; color: var(--muted); margin-top: 8px; }
+.cal-legend > span { display: flex; align-items: center; gap: 5px; }
+.cal-pay { display: inline-block; width: 10px; height: 10px; border: 1px solid var(--amber); border-radius: 3px; }
+
+/* ---------- Year chart ---------- */
+.chart {
+  display: flex; gap: 4px; align-items: flex-end;
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 14px 10px 8px; height: 140px;
+}
+.chart-col { flex: 1; display: flex; flex-direction: column; height: 100%; min-width: 0; }
+.chart-bars { flex: 1; display: flex; gap: 2px; align-items: flex-end; justify-content: center; }
+.chart-bar { width: 40%; max-width: 14px; border-radius: 3px 3px 0 0; min-height: 2px; }
+.chart-bar.in { background: var(--accent2); }
+.chart-bar.out { background: var(--line); }
+.chart-lbl { text-align: center; font-size: 10px; color: var(--muted); padding-top: 4px; }
+.chart-legend { display: flex; gap: 16px; font-size: 11px; color: var(--muted); margin-top: 8px; }
+.chart-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; }
+.chart-legend i.in { background: var(--accent2); }
+.chart-legend i.out { background: var(--line); }
+
+/* ---------- Floating quick-add ---------- */
+.fab {
+  position: fixed; right: 16px; bottom: calc(76px + env(safe-area-inset-bottom));
+  width: 54px; height: 54px; border-radius: 50%;
+  background: linear-gradient(160deg, var(--accent2), var(--accent));
+  color: #fff; font-size: 28px; line-height: 1; border: none; cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0,0,0,.4); z-index: 90;
+  transition: transform .12s ease;
+}
+.fab:active { transform: scale(.92); }
+@media (min-width: 900px) { .fab { bottom: 24px; right: 24px; } }
+
+/* ---------- Inline settings inputs ---------- */
+.inline-input {
+  width: 130px; background: var(--bg2); border: 1px solid var(--line);
+  color: var(--text); border-radius: 10px; padding: 8px 10px;
+  font: inherit; font-size: 14px; text-align: right;
+}
+.inline-input:focus { outline: none; border-color: var(--accent); }
 
 /* ---------- More view ---------- */
 .more-list button.morebtn {

@@ -4,12 +4,13 @@ const LS_KEY = "budgetData";
 const DATA_FILENAME = "budget-data.json";
 const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const GROUPS = [
-  { id: "dd",      name: "Direct Debits" },
-  { id: "subs",    name: "Subscriptions" },
-  { id: "exp",     name: "Expenses" },
-  { id: "martina", name: "Martina's" },
-  { id: "sean",    name: "Sean's" }
+  { id: "dd",      name: "Direct Debits", color: "#2f6fed" },
+  { id: "subs",    name: "Subscriptions", color: "#7a6ff0" },
+  { id: "exp",     name: "Expenses",      color: "#c9962a" },
+  { id: "martina", name: "Martina's",     color: "#d4589c" },
+  { id: "sean",    name: "Sean's",        color: "#2a9d9f" }
 ];
+const groupColor = (gid) => (GROUPS.find((g) => g.id === gid) || {}).color || "#5a6b7b";
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
@@ -85,7 +86,15 @@ const defaultData = () => ({
   ],
   log: [
     { id: uid(), date: "2025-08-22", name: "Broccoli", amount: 80 }
-  ]
+  ],
+  paid: {},       // { "YYYY-MM": [outgoingId, ...] } — bills ticked off as paid
+  pots: [         // savings pots from the Salary Sorting sheet
+    { id: uid(), name: "Emergency Fund", target: null, balance: 0 },
+    { id: uid(), name: "Savings", target: null, balance: 0 },
+    { id: uid(), name: "Holiday Pot", target: null, balance: 0 }
+  ],
+  activity: [],   // [{ts, device, text}] newest first, capped
+  settings: { payday: null }
 });
 
 let data = load();
@@ -101,7 +110,22 @@ function migrate(d) {
   d.outgoings = d.outgoings || [];
   d.debts = d.debts || [];
   d.log = d.log || [];
+  d.paid = d.paid || {};
+  if (!d.pots) d.pots = [   // seed the pots from the Salary Sorting sheet once
+    { id: uid(), name: "Emergency Fund", target: null, balance: 0 },
+    { id: uid(), name: "Savings", target: null, balance: 0 },
+    { id: uid(), name: "Holiday Pot", target: null, balance: 0 }
+  ];
+  d.activity = d.activity || [];
+  d.settings = d.settings || { payday: null };
   return d;
+}
+
+/* Activity feed — device name lives on each device, not in synced data */
+function deviceName() { return localStorage.getItem("budgetDeviceName") || ""; }
+function act(text) {
+  data.activity.unshift({ ts: new Date().toISOString(), device: deviceName() || "Someone", text });
+  data.activity = data.activity.slice(0, 50);
 }
 function load() {
   try {
@@ -155,6 +179,76 @@ function latestEntry(debt) {
 function totalDebt() {
   return data.debts.reduce((s, d) => { const e = latestEntry(d); return s + (e ? e.balance || 0 : 0); }, 0);
 }
+function curMonthKey() {
+  const t = new Date();
+  return t.getFullYear() + "-" + String(t.getMonth() + 1).padStart(2, "0");
+}
+function isPaid(oid, monthKey) {
+  return (data.paid[monthKey || curMonthKey()] || []).includes(oid);
+}
+function togglePaid(oid) {
+  const key = curMonthKey();
+  const list = data.paid[key] || (data.paid[key] = []);
+  const i = list.indexOf(oid);
+  const o = data.outgoings.find((x) => x.id === oid);
+  if (i >= 0) { list.splice(i, 1); act("Unticked " + (o ? o.name : "a bill")); }
+  else { list.push(oid); act("Ticked " + (o ? o.name : "a bill") + " as paid"); }
+  persist();
+}
+function paidTotals() {
+  const key = curMonthKey();
+  const billable = data.outgoings.filter((o) => o.amount > 0);
+  const due = billable.reduce((s, o) => s + o.amount, 0);
+  const paid = billable.filter((o) => isPaid(o.id, key)).reduce((s, o) => s + o.amount, 0);
+  return { due, paid };
+}
+function incTotalFor(key) {
+  const e = data.income[key];
+  return e ? (e.seanT || 0) + (e.martinaT || 0) : 0;
+}
+function totalDebtAsOf(key) {
+  // sum of each debt's latest entry up to and including the given month; null if no debt has data yet
+  let any = false;
+  const sum = data.debts.reduce((s, d) => {
+    const entries = d.history.filter((h) => h.month <= key).sort((a, b) => a.month.localeCompare(b.month));
+    if (!entries.length) return s;
+    any = true;
+    return s + (entries.at(-1).balance || 0);
+  }, 0);
+  return any ? sum : null;
+}
+function latestPayment(d) {
+  const withPay = d.history.filter((h) => h.payment != null && h.payment > 0).sort((a, b) => a.month.localeCompare(b.month));
+  return withPay.length ? withPay.at(-1).payment : null;
+}
+function payoffLabel(d) {
+  const e = latestEntry(d);
+  const pay = latestPayment(d);
+  if (!e || !e.balance || !pay) return "";
+  const months = Math.ceil(e.balance / pay);
+  if (months > 240) return "";
+  let [y, m] = e.month.split("-").map(Number);
+  m += months;
+  while (m > 12) { m -= 12; y++; }
+  return "~cleared " + MONTH_NAMES[m - 1].slice(0, 3) + " " + y + " at " + gbp(pay) + "/mo";
+}
+function sparkline(hist) {
+  if (hist.length < 2) return "";
+  const pts = [...hist].sort((a, b) => a.month.localeCompare(b.month)).map((h) => h.balance || 0);
+  const max = Math.max(...pts), min = Math.min(...pts);
+  const range = max - min || 1;
+  const coords = pts.map((v, i) =>
+    (i / (pts.length - 1)) * 100 + "," + (4 + 20 * (1 - (v - min) / range))
+  ).join(" ");
+  return `<svg class="spark" viewBox="0 0 100 28" preserveAspectRatio="none"><polyline points="${coords}"/></svg>`;
+}
+function delta(cur, prev, invert) {
+  // invert=true → a fall is good (debt); returns a wee arrow chip or ""
+  if (cur == null || prev == null || cur === prev) return "";
+  const up = cur > prev;
+  const good = invert ? !up : up;
+  return `<span class="delta ${good ? "good" : "bad"}">${up ? "↑" : "↓"} ${gbp(Math.abs(cur - prev))}</span>`;
+}
 
 /* ================= Navigation ================= */
 document.querySelectorAll("[data-view]").forEach((btn) => {
@@ -172,21 +266,66 @@ function render() {
 }
 
 /* ================= Home ================= */
+function miniCalendarHtml() {
+  const [y, m] = selMonth.split("-").map(Number);
+  const first = new Date(y, m - 1, 1);
+  const daysIn = new Date(y, m, 0).getDate();
+  const startIdx = (first.getDay() + 6) % 7;   // Monday = 0
+  const dueDays = new Set(data.outgoings.filter((o) => o.amount > 0 && o.dueDay).map((o) => Math.min(o.dueDay, daysIn)));
+  const today = new Date();
+  const isCur = selMonth === curMonthKey();
+  let cells = ["M", "T", "W", "T", "F", "S", "S"].map((d) => `<div class="cal-h">${d}</div>`).join("");
+  for (let i = 0; i < startIdx; i++) cells += `<div></div>`;
+  for (let d = 1; d <= daysIn; d++) {
+    const classes = ["cal-d"];
+    if (isCur && d === today.getDate()) classes.push("today");
+    if (data.settings.payday && d === data.settings.payday) classes.push("payday");
+    cells += `<div class="${classes.join(" ")}">${d}${dueDays.has(d) ? '<span class="cal-dot"></span>' : ""}</div>`;
+  }
+  return `<div class="cal">${cells}</div>
+    <div class="cal-legend"><span><span class="cal-dot" style="position:static;display:inline-block"></span> bill due</span>${data.settings.payday ? '<span><span class="cal-pay"></span> payday</span>' : ""}</div>`;
+}
+
 function renderHome() {
   const inc = data.income[selMonth];
-  const incTotal = inc ? (inc.seanT || 0) + (inc.martinaT || 0) : 0;
+  const incTotal = incTotalFor(selMonth);
   const outTotal = outgoingsTotal();
   const leftover = incTotal - outTotal;
   const debt = totalDebt();
+  const prevKey = shiftMonth(selMonth, -1);
+  const incDelta = delta(incTotal || null, incTotalFor(prevKey) || null, false);
+  const debtDelta = delta(totalDebtAsOf(selMonth), totalDebtAsOf(prevKey), true);
+  const isCurMonth = selMonth === curMonthKey();
+
+  // Paid-so-far progress (only for the real current month)
+  let paidHtml = "";
+  if (isCurMonth) {
+    const { due, paid } = paidTotals();
+    const pct = due ? Math.round((paid / due) * 100) : 0;
+    paidHtml = `
+    <div class="section">
+      <div class="section-head"><h2>Paid this month</h2><span class="total">${gbp(paid)} of ${gbp(due)}</span></div>
+      <div class="progress"><div class="progress-bar" style="width:${pct}%"></div></div>
+      <div class="progress-sub">${pct}% — tick bills off on the Outgoings tab as they come out</div>
+    </div>`;
+  }
+
+  // Payday countdown
+  let paydayChip = "";
+  if (data.settings.payday && isCurMonth) {
+    const today = new Date().getDate();
+    let diff = data.settings.payday - today;
+    if (diff < 0) diff += new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
+    paydayChip = `<div class="payday-chip">💰 Payday ${diff === 0 ? "today!" : "in " + diff + " day" + (diff === 1 ? "" : "s")}</div>`;
+  }
 
   // Upcoming payments in the next 7 days (only meaningful for the real current month)
   const today = new Date();
-  const curKey = today.getFullYear() + "-" + String(today.getMonth() + 1).padStart(2, "0");
   let dueHtml = "";
-  if (selMonth === curKey) {
+  if (isCurMonth) {
     const day = today.getDate();
     const upcoming = data.outgoings
-      .filter((o) => o.dueDay != null && o.amount > 0)
+      .filter((o) => o.dueDay != null && o.amount > 0 && !isPaid(o.id))
       .map((o) => {
         let diff = o.dueDay - day;
         if (diff < 0) diff += 31;   // rolls into next month
@@ -203,7 +342,7 @@ function renderHome() {
           <span class="badge ${o.diff === 0 ? "today" : "due"}">${o.diff === 0 ? "today" : "in " + o.diff + "d"}</span>
           <div class="amt">${gbp(o.amount)}</div>
         </div>`).join("")
-      : `<div class="empty">Nothing due in the next 7 days</div>`;
+      : `<div class="empty">Nothing left to pay in the next 7 days 🎉</div>`;
   } else {
     dueHtml = `<div class="empty">Viewing ${monthLabel(selMonth)} — go to the current month to see what's due soon</div>`;
   }
@@ -212,12 +351,14 @@ function renderHome() {
     <h1>Budget</h1>
     <div class="sub">Sean &amp; Martina's household budget</div>
     ${monthbarHtml()}
+    ${paydayChip}
     <div class="cards">
-      <div class="card"><div class="label">Income (transferred)</div><div class="value pos">${gbp(incTotal)}</div></div>
+      <div class="card"><div class="label">Income (transferred)</div><div class="value pos">${gbp(incTotal)}</div>${incDelta}</div>
       <div class="card"><div class="label">Outgoings</div><div class="value">${gbp(outTotal)}</div></div>
       <div class="card"><div class="label">Leftover</div><div class="value ${leftover >= 0 ? "pos" : "neg"}">${gbp(leftover)}</div></div>
-      <div class="card"><div class="label">Total debt</div><div class="value ${debt > 0 ? "neg" : "pos"}">${gbp(debt)}</div></div>
+      <div class="card"><div class="label">Total debt</div><div class="value ${debt > 0 ? "neg" : "pos"}">${gbp(debt)}</div>${debtDelta}</div>
     </div>
+    ${paidHtml}
     <div class="section">
       <div class="section-head"><h2>${monthLabel(selMonth)} income</h2><span class="total">${gbp(incTotal)}</span></div>
       <div class="rows">
@@ -237,7 +378,7 @@ function renderHome() {
     <div class="section">
       <div class="section-head"><h2>Outgoings by group</h2><span class="total">${gbp(outTotal)}</span></div>
       <div class="rows">${GROUPS.map((g) => `
-        <button class="row" data-goto="outgoings">
+        <button class="row acc" style="--acc:${g.color}" data-goto="outgoings">
           <div class="grow"><div class="name">${esc(g.name)}</div></div>
           <div class="amt">${gbp(groupTotal(g.id))}</div>
         </button>`).join("")}
@@ -257,8 +398,27 @@ function renderHome() {
       </div>
     </div>
     <div class="section">
+      <div class="section-head"><h2>Savings pots</h2><span class="total">${gbp(data.pots.reduce((s, p) => s + (p.balance || 0), 0))}</span></div>
+      <div class="rows">${data.pots.length ? data.pots.map((p) => {
+        const pct = p.target ? Math.min(100, Math.round((p.balance / p.target) * 100)) : null;
+        return `
+        <button class="row" data-edit-pot="${p.id}">
+          <div class="grow"><div class="name">${esc(p.name)}</div>
+          ${pct != null ? `<div class="progress sm"><div class="progress-bar" style="width:${pct}%"></div></div>` : ""}
+          <div class="meta">${p.target ? gbp(p.balance) + " of " + gbp(p.target) + " · " + pct + "%" : "no target set"}</div></div>
+          <div class="amt">${gbp(p.balance)}</div>
+        </button>`;
+      }).join("") : `<div class="empty">No pots yet</div>`}
+      </div>
+      <button class="addbtn" id="addPot">+ Add a pot</button>
+    </div>
+    <div class="section">
       <div class="section-head"><h2>Due soon</h2></div>
       <div class="rows">${dueHtml}</div>
+    </div>
+    <div class="section">
+      <div class="section-head"><h2>${monthLabel(selMonth)} calendar</h2></div>
+      ${miniCalendarHtml()}
     </div>`;
 
   bindMonthbar();
@@ -266,6 +426,39 @@ function renderHome() {
     b.addEventListener("click", () => showView(b.dataset.goto)));
   ["#editIncomeHome", "#editIncomeHome2", "#enterSalary"].forEach((sel) =>
     $(sel).addEventListener("click", () => editIncome(selMonth)));
+  document.querySelectorAll("[data-edit-pot]").forEach((b) =>
+    b.addEventListener("click", () => editPot(b.dataset.editPot)));
+  $("#addPot").addEventListener("click", () => editPot(null));
+}
+
+/* ================= Pots ================= */
+function editPot(id) {
+  const p = id ? data.pots.find((x) => x.id === id) : { name: "", target: "", balance: "" };
+  openModal(id ? "Update " + p.name : "Add a pot", `
+    <div class="field"><label>Name</label><input id="f_name" value="${esc(p.name)}"></div>
+    <div class="field-row">
+      <div class="field"><label>Current amount (£)</label><input id="f_bal" type="number" step="0.01" inputmode="decimal" value="${p.balance ?? ""}"></div>
+      <div class="field"><label>Target (£, optional)</label><input id="f_target" type="number" step="0.01" inputmode="decimal" value="${p.target ?? ""}"></div>
+    </div>`,
+    [
+      ...(id ? [{ label: "Delete", cls: "btn-danger", fn: () => {
+        if (!confirm("Delete the " + p.name + " pot?")) return;
+        data.pots = data.pots.filter((x) => x.id !== id);
+        act("Deleted pot " + p.name);
+        persist(); closeModal(); render();
+      }}] : []),
+      { label: "Cancel", cls: "btn-ghost", fn: closeModal },
+      { label: "Save", cls: "btn-primary", fn: () => {
+        const name = $("#f_name").value.trim();
+        if (!name) { alert("Name is required"); return; }
+        const bal = parseFloat($("#f_bal").value) || 0;
+        const target = parseFloat($("#f_target").value);
+        if (id) { p.name = name; p.balance = bal; p.target = isNaN(target) ? null : target; }
+        else data.pots.push({ id: uid(), name, balance: bal, target: isNaN(target) ? null : target });
+        act((id ? "Updated" : "Added") + " pot " + name + " — " + gbp(bal));
+        persist(); closeModal(); render();
+      }}
+    ]);
 }
 
 function monthbarHtml() {
@@ -298,6 +491,31 @@ function renderIncome() {
         <td class="${tot ? "tot" : "dim"}">${tot ? gbp(tot) : "—"}</td>
       </tr>`;
   }
+  // Year in bars: joint income vs outgoings per month, plus a year-total strip
+  const outTotal = outgoingsTotal();
+  let maxVal = outTotal;
+  const monthTotals = [];
+  for (let m = 1; m <= 12; m++) {
+    const t = incTotalFor(incomeYear + "-" + String(m).padStart(2, "0"));
+    monthTotals.push(t);
+    if (t > maxVal) maxVal = t;
+  }
+  maxVal = maxVal || 1;
+  const yearIn = monthTotals.reduce((s, t) => s + t, 0);
+  const monthsWithIncome = monthTotals.filter((t) => t > 0).length;
+  const chart = `
+    <div class="chart">
+      ${monthTotals.map((t, i) => `
+        <div class="chart-col" title="${MONTH_NAMES[i]}: in ${gbp(t)}, out ${gbp(outTotal)}">
+          <div class="chart-bars">
+            <div class="chart-bar in" style="height:${Math.round((t / maxVal) * 100)}%"></div>
+            <div class="chart-bar out" style="height:${Math.round((outTotal / maxVal) * 100)}%"></div>
+          </div>
+          <div class="chart-lbl">${MONTH_NAMES[i][0]}</div>
+        </div>`).join("")}
+    </div>
+    <div class="chart-legend"><span><i class="in"></i> joint income</span><span><i class="out"></i> outgoings (${gbp(outTotal)}/mo)</span></div>`;
+
   $("#view-income").innerHTML = `
     <h1>Income</h1>
     <div class="sub">Earned and transferred to joint, per month — tap a month to edit</div>
@@ -305,6 +523,15 @@ function renderIncome() {
       <button id="yPrev">‹</button>
       <span class="cur">${incomeYear}</span>
       <button id="yNext">›</button>
+    </div>
+    <div class="section">
+      <div class="section-head"><h2>${incomeYear} at a glance</h2></div>
+      ${chart}
+      <div class="cards" style="margin-top:10px">
+        <div class="card"><div class="label">Joint income (${incomeYear})</div><div class="value pos">${gbp(yearIn)}</div></div>
+        <div class="card"><div class="label">Leftover (${monthsWithIncome} month${monthsWithIncome === 1 ? "" : "s"})</div>
+          <div class="value ${yearIn - outTotal * monthsWithIncome >= 0 ? "pos" : "neg"}">${gbp(yearIn - outTotal * monthsWithIncome)}</div></div>
+      </div>
     </div>
     <div class="inc-wrap"><table class="inc-table">
       <thead><tr><th>Month</th><th>Sean</th><th>S → Joint</th><th>Martina</th><th>M → Joint</th><th>Joint total</th></tr></thead>
@@ -335,6 +562,7 @@ function editIncome(key) {
         const entry = { sean: num("#f_sean"), seanT: num("#f_seanT"), martina: num("#f_martina"), martinaT: num("#f_martinaT") };
         if (Object.values(entry).every((v) => v == null)) delete data.income[key];
         else data.income[key] = entry;
+        act("Updated " + monthLabel(key) + " income");
         persist(); closeModal(); render();
       }}
     ]);
@@ -342,20 +570,30 @@ function editIncome(key) {
 
 /* ================= Outgoings ================= */
 function renderOutgoings() {
+  const { due, paid } = paidTotals();
+  const pct = due ? Math.round((paid / due) * 100) : 0;
   $("#view-outgoings").innerHTML = `
     <h1>Outgoings</h1>
-    <div class="sub">Monthly total: <b>${gbp(outgoingsTotal())}</b> — tap an item to edit</div>
+    <div class="sub">Monthly total: <b>${gbp(outgoingsTotal())}</b> — tap to edit, tick when paid this month</div>
+    <div class="progress"><div class="progress-bar" style="width:${pct}%"></div></div>
+    <div class="progress-sub">${gbp(paid)} of ${gbp(due)} paid in ${monthLabel(curMonthKey())}</div>
     ${GROUPS.map((g) => {
       const items = data.outgoings.filter((o) => o.group === g.id);
       return `
       <div class="section">
         <div class="section-head"><h2>${esc(g.name)}</h2><span class="total">${gbp(groupTotal(g.id))}</span></div>
-        <div class="rows">${items.length ? items.map((o) => `
-          <button class="row" data-edit-out="${o.id}">
-            <div class="grow"><div class="name">${esc(o.name)}</div>
-            <div class="meta">${[o.dueDay != null ? ordinal(o.dueDay) : "", o.account, o.notes].filter(Boolean).map(esc).join(" · ") || "&nbsp;"}</div></div>
+        <div class="rows">${items.length ? items.map((o) => {
+          const paidNow = isPaid(o.id);
+          return `
+          <div class="row acc ${paidNow ? "isPaid" : ""}" style="--acc:${g.color}">
+            ${o.amount > 0 ? `<input type="checkbox" class="paidbox" data-paid="${o.id}" ${paidNow ? "checked" : ""} aria-label="Paid this month">` : `<span class="paidbox-spacer"></span>`}
+            <button class="rowbtn grow" data-edit-out="${o.id}">
+              <div class="name">${esc(o.name)}</div>
+              <div class="meta">${[o.dueDay != null ? ordinal(o.dueDay) : "", o.account, o.notes].filter(Boolean).map(esc).join(" · ") || "&nbsp;"}</div>
+            </button>
             <div class="amt ${o.amount ? "" : "muted"}">${o.amount ? gbp(o.amount) : "—"}</div>
-          </button>`).join("") : `<div class="empty">Nothing here yet</div>`}
+          </div>`;
+        }).join("") : `<div class="empty">Nothing here yet</div>`}
         </div>
         <button class="addbtn" data-add-out="${g.id}">+ Add to ${esc(g.name)}</button>
       </div>`;
@@ -365,6 +603,8 @@ function renderOutgoings() {
     b.addEventListener("click", () => editOutgoing(b.dataset.editOut)));
   document.querySelectorAll("[data-add-out]").forEach((b) =>
     b.addEventListener("click", () => editOutgoing(null, b.dataset.addOut)));
+  document.querySelectorAll("[data-paid]").forEach((cb) =>
+    cb.addEventListener("change", () => { togglePaid(cb.dataset.paid); render(); }));
 }
 
 function editOutgoing(id, group) {
@@ -383,6 +623,7 @@ function editOutgoing(id, group) {
       ...(id ? [{ label: "Delete", cls: "btn-danger", fn: () => {
         if (!confirm("Delete " + o.name + "?")) return;
         data.outgoings = data.outgoings.filter((x) => x.id !== id);
+        act("Deleted outgoing " + o.name);
         persist(); closeModal(); render();
       }}] : []),
       { label: "Cancel", cls: "btn-ghost", fn: closeModal },
@@ -398,6 +639,7 @@ function editOutgoing(id, group) {
         };
         if (id) data.outgoings = data.outgoings.map((x) => (x.id === id ? item : x));
         else data.outgoings.push(item);
+        act((id ? "Edited" : "Added") + " outgoing " + name + " — " + gbp(amount));
         persist(); closeModal(); render();
       }}
     ]);
@@ -412,15 +654,23 @@ function renderDebts() {
     ${data.debts.map((d) => {
       const e = latestEntry(d);
       const hist = [...d.history].sort((a, b) => b.month.localeCompare(a.month));
+      const prev = hist.length > 1 ? hist[1] : null;
+      const peak = d.history.length ? Math.max(...d.history.map((h) => h.balance || 0)) : 0;
+      const pct = e && peak ? Math.round(((peak - e.balance) / peak) * 100) : 0;
+      const payoff = payoffLabel(d);
       return `
       <div class="debt-card">
         <div class="debt-top">
           <div><div class="debt-name">${esc(d.name)}</div><div class="debt-owner">${esc(d.owner)}</div></div>
           <div>
             <div class="debt-bal ${e && e.balance === 0 ? "paidoff" : ""}">${e ? gbp(e.balance) : "—"}</div>
-            <div class="debt-meta">${e ? "as of " + monthLabel(e.month) + (e.payment ? " · paying " + gbp(e.payment) + "/mo" : "") : "no entries yet"}</div>
+            <div class="debt-meta">${e ? "as of " + monthLabel(e.month) : "no entries yet"} ${prev && e ? delta(e.balance, prev.balance, true) : ""}</div>
           </div>
         </div>
+        ${e && peak > 0 ? `
+        <div class="progress sm debtbar"><div class="progress-bar" style="width:${pct}%"></div></div>
+        <div class="progress-sub">${pct}% down from its worst (${gbp(peak)})${payoff ? " · " + payoff : ""}</div>` : ""}
+        ${sparkline(d.history)}
         <div class="debt-actions">
           <button data-debt-update="${d.id}">Update balance</button>
           <button data-debt-history="${d.id}">${openHistory[d.id] ? "Hide" : "History"} (${d.history.length})</button>
@@ -463,6 +713,7 @@ function updateDebt(id) {
         const pay = parseFloat($("#f_pay").value);
         d.history = d.history.filter((h) => h.month !== month);
         d.history.push({ month, balance: bal, payment: isNaN(pay) ? null : pay });
+        act("Updated " + d.name + " — " + gbp(bal) + " (" + monthLabel(month) + ")");
         persist(); closeModal(); render();
       }}
     ]);
@@ -479,6 +730,7 @@ function editDebt(id) {
       ...(id ? [{ label: "Delete", cls: "btn-danger", fn: () => {
         if (!confirm("Delete " + d.name + " and all its history?")) return;
         data.debts = data.debts.filter((x) => x.id !== id);
+        act("Deleted debt " + d.name);
         persist(); closeModal(); render();
       }}] : []),
       { label: "Cancel", cls: "btn-ghost", fn: closeModal },
@@ -487,6 +739,7 @@ function editDebt(id) {
         if (!name) { alert("Name is required"); return; }
         if (id) { d.name = name; d.owner = $("#f_owner").value; }
         else data.debts.push({ id: uid(), name, owner: $("#f_owner").value, history: [] });
+        act((id ? "Edited" : "Added") + " debt " + name);
         persist(); closeModal(); render();
       }}
     ]);
@@ -510,6 +763,32 @@ function renderMore() {
         </button>`).join("") : `<div class="empty">No one-off expenses logged</div>`}
       </div>
       <button class="addbtn" id="addLog">+ Log an expense</button>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><h2>Recent changes</h2></div>
+      <div class="rows">${data.activity.length ? data.activity.slice(0, 12).map((a) => `
+        <div class="row" style="cursor:default">
+          <div class="grow"><div class="name" style="font-size:13px;font-weight:400">${esc(a.text)}</div>
+          <div class="meta">${esc(a.device)} · ${new Date(a.ts).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</div></div>
+        </div>`).join("") : `<div class="empty">No changes logged yet</div>`}
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><h2>Settings</h2></div>
+      <div class="rows">
+        <div class="row" style="cursor:default">
+          <div class="grow"><div class="name">This device's name</div>
+          <div class="meta">Shows in "Recent changes" so you know who did what</div></div>
+          <input class="inline-input" id="deviceNameInput" placeholder="e.g. Sean's phone" value="${esc(deviceName())}">
+        </div>
+        <div class="row" style="cursor:default">
+          <div class="grow"><div class="name">Payday (day of month)</div>
+          <div class="meta">Shows a countdown on the Home page</div></div>
+          <input class="inline-input" id="paydayInput" type="number" min="1" max="31" inputmode="numeric" placeholder="—" value="${data.settings.payday ?? ""}">
+        </div>
+      </div>
     </div>
 
     <div class="section">
@@ -537,6 +816,14 @@ function renderMore() {
   const so = $("#signOutBtn");
   if (so) so.addEventListener("click", async () => {
     if (confirm("Sign out of the budget on this device?")) await supa.auth.signOut();
+  });
+  $("#deviceNameInput").addEventListener("change", (e) => {
+    localStorage.setItem("budgetDeviceName", e.target.value.trim());
+  });
+  $("#paydayInput").addEventListener("change", (e) => {
+    const v = parseInt(e.target.value, 10);
+    data.settings.payday = isNaN(v) ? null : Math.min(31, Math.max(1, v));
+    persist();
   });
   $("#addLog").addEventListener("click", () => editLog(null));
   document.querySelectorAll("[data-edit-log]").forEach((b) =>
@@ -570,6 +857,7 @@ function editLog(id) {
         if (!name || isNaN(amount) || !date) { alert("All fields are required"); return; }
         if (id) { l.name = name; l.amount = amount; l.date = date; }
         else data.log.push({ id: uid(), name, amount, date });
+        act((id ? "Edited" : "Logged") + " expense " + name + " — " + gbp(amount));
         persist(); closeModal(); render();
       }}
     ]);
@@ -636,6 +924,7 @@ function openModal(title, bodyHtml, actions) {
   if (first) first.focus();
 }
 function closeModal() { $("#modalBackdrop").hidden = true; }
+$("#fabAdd").addEventListener("click", () => editLog(null));
 $("#modalBackdrop").addEventListener("click", (e) => { if (e.target.id === "modalBackdrop") closeModal(); });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeModal(); });
 
