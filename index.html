@@ -13,6 +13,21 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+  <div class="auth-screen" id="authScreen">
+    <div class="auth-box">
+      <div class="auth-logo">💷</div>
+      <h1>Budget</h1>
+      <p class="auth-sub" id="authSub">Sign in — use the same account on both phones so you share one budget</p>
+      <input id="aEmail" type="email" placeholder="Email" autocomplete="email">
+      <input id="aPass" type="password" placeholder="Password" autocomplete="current-password">
+      <div class="auth-err" id="authErr"></div>
+      <button id="aGo">Sign in</button>
+      <button id="aToggle" class="auth-toggle">New here? Create the account</button>
+    </div>
+  </div>
+
+  <div class="clouddot" id="cloudDot" title="Sync status" hidden></div>
+
   <div class="app">
 
     <nav class="sidenav" id="sidenav">
@@ -49,6 +64,7 @@
     </div>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

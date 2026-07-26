@@ -211,6 +211,46 @@ h1 { font-size: 22px; margin-bottom: 4px; }
 .btn-ghost { background: var(--card); color: var(--text); border: 1px solid var(--line) !important; }
 .btn-danger { background: none; color: var(--red); border: 1px solid var(--red) !important; }
 
+/* ---------- Auth screen ---------- */
+.auth-screen {
+  position: fixed; inset: 0; z-index: 200;
+  background: var(--bg);
+  display: none; align-items: center; justify-content: center;
+  padding: 24px;
+}
+.auth-screen.open { display: flex; }
+.auth-box { width: 100%; max-width: 340px; text-align: center; }
+.auth-logo { font-size: 44px; margin-bottom: 8px; }
+.auth-box h1 { font-size: 24px; margin-bottom: 6px; }
+.auth-sub { color: var(--muted); font-size: 13px; margin-bottom: 20px; }
+.auth-box input {
+  width: 100%; background: var(--card); border: 1px solid var(--line);
+  color: var(--text); border-radius: 12px; padding: 13px 14px;
+  font: inherit; font-size: 15px; margin-bottom: 10px;
+}
+.auth-box input:focus { outline: none; border-color: var(--accent); }
+.auth-err { color: var(--red); font-size: 13px; min-height: 18px; margin-bottom: 8px; }
+.auth-box #aGo {
+  width: 100%; background: var(--accent); color: #fff; border: none;
+  border-radius: 12px; padding: 13px; font: inherit; font-size: 15px;
+  font-weight: 600; cursor: pointer;
+}
+.auth-box #aGo:disabled { opacity: .6; }
+.auth-toggle {
+  background: none; border: none; color: var(--muted);
+  font: inherit; font-size: 13px; margin-top: 14px; cursor: pointer;
+  text-decoration: underline;
+}
+
+/* ---------- Cloud sync dot ---------- */
+.clouddot {
+  position: fixed; top: calc(10px + env(safe-area-inset-top)); right: 10px;
+  width: 10px; height: 10px; border-radius: 50%; z-index: 60;
+  background: var(--amber);
+}
+.clouddot.ok { background: var(--accent2); }
+.clouddot.offline { background: var(--red); }
+
 /* ---------- More view ---------- */
 .more-list button.morebtn {
   display: flex; align-items: center; gap: 12px; width: 100%;

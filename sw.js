@@ -1,5 +1,5 @@
 /* Budget service worker — offline support */
-const CACHE = "budget-v1";
+const CACHE = "budget-v2";
 const ASSETS = [
   "./",
   "./index.html",
@@ -8,7 +8,8 @@ const ASSETS = [
   "./manifest.webmanifest",
   "./icon-192.png",
   "./icon-512.png",
-  "./apple-touch-icon.png"
+  "./apple-touch-icon.png",
+  "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"
 ];
 
 self.addEventListener("install", (ev) => {
@@ -27,6 +28,7 @@ self.addEventListener("activate", (ev) => {
 self.addEventListener("fetch", (ev) => {
   const req = ev.request;
   if (req.method !== "GET") return;
+  if (req.url.includes(".supabase.co")) return;   // live API traffic — never cache
 
   // Pages: network first so updates arrive, cache fallback for offline.
   if (req.mode === "navigate") {
@@ -47,7 +49,8 @@ self.addEventListener("fetch", (ev) => {
     caches.match(req).then((hit) => {
       const refresh = fetch(req)
         .then((res) => {
-          if (res.ok && new URL(req.url).origin === location.origin) {
+          const CACHEABLE = [location.origin, "https://cdn.jsdelivr.net"];
+          if (res.ok && CACHEABLE.includes(new URL(req.url).origin)) {
             const copy = res.clone();
             caches.open(CACHE).then((c) => c.put(req, copy));
           }

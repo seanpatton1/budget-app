@@ -13,6 +13,16 @@ const GROUPS = [
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
+/* Supabase — same project as the Week Planner */
+const SUPA_URL = "https://ckaahrsyjeikfnqdbpbo.supabase.co";
+const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNrYWFocnN5amVpa2ZucWRicGJvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMyNDA4NDYsImV4cCI6MjA5ODgxNjg0Nn0.Amm6sk-XIezov1qXNHZvwZvnLS3aGydeGt7SaF4Kn4s";
+const supa = window.supabase ? window.supabase.createClient(SUPA_URL, SUPA_KEY) : null;
+let userId = null;          // signed-in account id (shared by Sean & Martina)
+let userEmail = "";
+let cloudState = "sync";    // sync | ok | offline
+let dirty = false;          // unpushed local changes
+function lsKey() { return userId ? LS_KEY + "_" + userId : LS_KEY; }
+
 /* Starting data imported from the "Budget 2025" spreadsheet */
 const defaultData = () => ({
   version: 1,
@@ -86,16 +96,25 @@ let incomeYear = now.getFullYear();
 let openHistory = {};   // debtId -> bool
 let fileHandle = null;  // FileSystemFileHandle (desktop export)
 
+function migrate(d) {
+  d.income = d.income || {};
+  d.outgoings = d.outgoings || [];
+  d.debts = d.debts || [];
+  d.log = d.log || [];
+  return d;
+}
 function load() {
   try {
-    const raw = localStorage.getItem(LS_KEY);
-    if (raw) { const d = JSON.parse(raw); if (d && d.outgoings && d.debts) return d; }
+    const raw = localStorage.getItem(lsKey());
+    if (raw) { const d = JSON.parse(raw); if (d && d.outgoings && d.debts) return migrate(d); }
   } catch (e) {}
   return defaultData();
 }
 function persist() {
   data.savedAt = new Date().toISOString();
-  localStorage.setItem(LS_KEY, JSON.stringify(data));
+  localStorage.setItem(lsKey(), JSON.stringify(data));
+  dirty = true;
+  schedulePush();
 }
 
 /* ================= Helpers ================= */
@@ -462,8 +481,17 @@ function renderMore() {
     </div>
 
     <div class="section">
-      <div class="section-head"><h2>Backup &amp; sync</h2></div>
-      <div class="sync-status">${data.savedAt ? "Last saved on this device: " + new Date(data.savedAt).toLocaleString("en-GB") : "Not saved yet"}</div>
+      <div class="section-head"><h2>Account</h2></div>
+      <div class="sync-status">${userId
+        ? "Signed in as <b>" + esc(userEmail) + "</b> — changes sync live between devices"
+        : "Not signed in — data only lives on this device"}</div>
+      ${userId ? `<div class="more-list"><button class="morebtn" id="signOutBtn"><span class="ico">🚪</span>
+        <div>Sign out<div class="desc">Stop syncing on this device</div></div></button></div>` : ""}
+    </div>
+
+    <div class="section">
+      <div class="section-head"><h2>Backup</h2></div>
+      <div class="sync-status">${data.savedAt ? "Last change: " + new Date(data.savedAt).toLocaleString("en-GB") : "No changes yet"}</div>
       <div class="more-list">
         <button class="morebtn" id="exportBtn"><span class="ico">⬇️</span>
           <div>Export data<div class="desc">Save ${DATA_FILENAME} — put it in OneDrive to share</div></div></button>
@@ -474,6 +502,10 @@ function renderMore() {
       </div>
     </div>`;
 
+  const so = $("#signOutBtn");
+  if (so) so.addEventListener("click", async () => {
+    if (confirm("Sign out of the budget on this device?")) await supa.auth.signOut();
+  });
   $("#addLog").addEventListener("click", () => editLog(null));
   document.querySelectorAll("[data-edit-log]").forEach((b) =>
     b.addEventListener("click", () => editLog(b.dataset.editLog)));
@@ -575,6 +607,134 @@ function closeModal() { $("#modalBackdrop").hidden = true; }
 $("#modalBackdrop").addEventListener("click", (e) => { if (e.target.id === "modalBackdrop") closeModal(); });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeModal(); });
 
-/* ================= Boot ================= */
-render();
+/* ================= Cloud sync ================= */
+let pushTimer = null;
+function updateCloudDot() {
+  const dot = $("#cloudDot");
+  dot.hidden = !userId;
+  dot.className = "clouddot" + (cloudState === "ok" ? " ok" : cloudState === "offline" ? " offline" : "");
+  dot.title = cloudState === "ok" ? "Synced" : cloudState === "offline" ? "Offline — will sync when back online" : "Syncing…";
+}
+function schedulePush() {
+  if (!userId || !supa) return;
+  clearTimeout(pushTimer);
+  cloudState = "sync"; updateCloudDot();
+  pushTimer = setTimeout(pushCloud, 800);
+}
+async function pushCloud() {
+  if (!userId || !supa) return;
+  pushTimer = null;
+  try {
+    const { error } = await supa.from("budget").upsert({ user_id: userId, data, updated_at: new Date().toISOString() });
+    if (error) throw error;
+    dirty = false; cloudState = "ok";
+  } catch (e) { cloudState = "offline"; }
+  updateCloudDot();
+}
+async function initialCloudSync() {
+  cloudState = "sync"; updateCloudDot();
+  try {
+    const { data: row, error } = await supa.from("budget").select("data").maybeSingle();
+    if (error) throw error;
+    if (row && row.data) {
+      const remote = migrate(typeof row.data === "string" ? JSON.parse(row.data) : row.data);
+      if (!data.savedAt || (remote.savedAt && remote.savedAt > data.savedAt)) {
+        data = remote;
+        localStorage.setItem(lsKey(), JSON.stringify(data));
+        render();
+      } else if (remote.savedAt !== data.savedAt) {
+        schedulePush();
+      }
+    } else {
+      // First sign-in for this account: adopt any pre-account data on this device
+      try {
+        const legacy = localStorage.getItem(LS_KEY);
+        if (legacy) {
+          const d = JSON.parse(legacy);
+          if (d && d.outgoings && d.debts) {
+            data = migrate(d);
+            localStorage.setItem(lsKey(), JSON.stringify(data));
+            render();
+          }
+        }
+      } catch (e) {}
+      schedulePush();
+    }
+    cloudState = "ok";
+    if (!pushTimer) dirty = false;
+  } catch (e) { cloudState = "offline"; }
+  updateCloudDot();
+}
+function subscribeRealtime() {
+  supa.channel("budget-sync")
+    .on("postgres_changes",
+        { event: "*", schema: "public", table: "budget", filter: "user_id=eq." + userId },
+        (payload) => {
+          const row = payload.new;
+          if (!row || !row.data) return;
+          const remote = migrate(typeof row.data === "string" ? JSON.parse(row.data) : row.data);
+          if (remote.savedAt && (!data.savedAt || remote.savedAt > data.savedAt)) {
+            data = remote;
+            localStorage.setItem(lsKey(), JSON.stringify(data));
+            dirty = false; cloudState = "ok";
+            render(); updateCloudDot();
+          }
+        })
+    .subscribe();
+}
+window.addEventListener("online", () => { if (userId && dirty) pushCloud(); });
+
+/* ================= Auth + boot ================= */
+const authScreen = $("#authScreen");
+let authMode = "signin";
+$("#aToggle").addEventListener("click", () => {
+  authMode = authMode === "signin" ? "signup" : "signin";
+  $("#aGo").textContent = authMode === "signin" ? "Sign in" : "Create account";
+  $("#aToggle").textContent = authMode === "signin"
+    ? "New here? Create the account" : "Already have the account? Sign in";
+  $("#authSub").textContent = authMode === "signin"
+    ? "Sign in — use the same account on both phones so you share one budget"
+    : "Create ONE account and both sign in with it — you share a single budget";
+  $("#authErr").textContent = "";
+});
+$("#aGo").addEventListener("click", async () => {
+  const email = $("#aEmail").value.trim();
+  const pass = $("#aPass").value;
+  const err = $("#authErr");
+  if (!email || pass.length < 6) { err.textContent = "Enter your email and a password of 6+ characters."; return; }
+  err.textContent = "";
+  const btn = $("#aGo");
+  btn.disabled = true;
+  const { error } = authMode === "signup"
+    ? await supa.auth.signUp({ email, password: pass })
+    : await supa.auth.signInWithPassword({ email, password: pass });
+  btn.disabled = false;
+  if (error) err.textContent = error.message;
+});
+$("#aPass").addEventListener("keydown", (ev) => { if (ev.key === "Enter") $("#aGo").click(); });
+
+function startApp(session) {
+  userId = session.user.id;
+  userEmail = session.user.email || "";
+  authScreen.classList.remove("open");
+  data = load();
+  render();
+  updateCloudDot();
+  initialCloudSync();
+  subscribeRealtime();
+}
+async function boot() {
+  if (!supa) {   // supabase library unreachable (first load offline) — run on this device only
+    render();
+    return;
+  }
+  const { data: { session } } = await supa.auth.getSession();
+  if (session) startApp(session);
+  else { render(); authScreen.classList.add("open"); }
+  supa.auth.onAuthStateChange((ev, sess) => {
+    if (sess && !userId) startApp(sess);
+    if (ev === "SIGNED_OUT") { userId = null; location.reload(); }
+  });
+}
+boot();
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js");
