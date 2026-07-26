@@ -574,6 +574,15 @@ button.hero:hover .hero-info { background: var(--muted); color: var(--bg); }
   background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
   border-radius: var(--radius); padding: 14px; margin-bottom: 16px;
 }
+.allocate-cta {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  width: 100%; text-align: left; cursor: pointer; font: inherit; color: inherit;
+  background: var(--card); border: 1px dashed var(--line);
+  border-radius: var(--radius); padding: 13px 14px; margin-bottom: 18px;
+}
+.allocate-cta:hover { border-color: var(--accent); }
+.allocate-cta .planner-title { color: var(--text); }
+.allocate-cta .chev { transform: none; }
 .planner-title { font-family: var(--font-display); font-size: 15px; font-weight: 700; color: var(--accent2); }
 .planner-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
 .planner-cta .chev { transform: none; color: var(--accent2); }

@@ -695,15 +695,21 @@ function renderHome() {
     ${monthbarHtml()}
     ${paydayChip}
     <button class="hero" id="heroBtn">
-      <div class="hero-label">Disposable income · ${monthLabel(selMonth)} <span class="hero-info">?</span></div>
-      <div class="hero-value ${leftover < 0 ? "neg" : ""}" id="heroValue">${gbpHero(leftover)}</div>
-      <div class="hero-note">after everything, including ${gbp(spendBudget)} spending money${saving ? " · " + gbp(free) + " free after " + gbp(saving) + " into pots" : ""}</div>
+      <div class="hero-label">Left to allocate · ${monthLabel(selMonth)} <span class="hero-info">?</span></div>
+      <div class="hero-value ${free < 0 ? "neg" : ""}" id="heroValue">${gbpHero(free)}</div>
+      <div class="hero-note">after bills, ${gbp(spendBudget)} spending money${saving ? " and " + gbp(saving) + " into pots" : ""}</div>
       <div class="hero-stats">
         <div class="hstat"><div class="hs-label">Income in</div><div class="hs-value">${gbp(incTotal)} ${incDelta}</div></div>
-        <div class="hstat"><div class="hs-label">Outgoings</div><div class="hs-value">${gbp(outTotal)}</div></div>
+        <div class="hstat"><div class="hs-label">Committed</div><div class="hs-value">${gbp(outTotal + saving)}</div></div>
         <div class="hstat"><div class="hs-label">Total debt</div><div class="hs-value">${gbp(debt)} ${debtDelta}</div></div>
       </div>
     </button>
+    ${incTotal && free > 0 ? `
+      <button class="allocate-cta" id="allocateBtn">
+        <div><div class="planner-title">${gbp(free)} without a job</div>
+        <div class="planner-sub">earmark it for savings, a holiday or clearing debt faster</div></div>
+        <span class="chev">›</span>
+      </button>` : ""}
     ${paidHtml}
     ${spendHtml}
     ${spendCatsHtml}
@@ -770,7 +776,7 @@ function renderHome() {
       <button class="qlink" id="customiseHome"><span class="ico">${ICONS.sliders}</span><span>Customise</span></button>
     </div>`;
 
-  animateHero($("#heroValue"), leftover);
+  animateHero($("#heroValue"), free);
   bindMonthbar();
   document.querySelectorAll("[data-edit-out]").forEach((b) =>
     b.addEventListener("click", () => editOutgoing(b.dataset.editOut)));
@@ -786,6 +792,35 @@ function renderHome() {
   if (ap) ap.addEventListener("click", () => editPot(null));
   $("#customiseHome").addEventListener("click", customiseHome);
   $("#heroBtn").addEventListener("click", () => showBreakdown(incTotal, outTotal, leftover, saving, free));
+  const alloc = $("#allocateBtn");
+  if (alloc) alloc.addEventListener("click", () => allocateSpare(free));
+}
+
+/* Give the spare money a job */
+function allocateSpare(free) {
+  openModal("Give " + gbp(free) + " a job", `
+    <div class="field-hint" style="margin-bottom:14px">Anything you earmark comes off the headline figure,
+    so what's left really is spare.</div>
+    <div class="rows">${data.pots.map((p) => `
+      <button class="row" data-alloc-pot="${p.id}">
+        <div class="grow"><div class="name">${esc(p.name)}</div>
+        <div class="meta">${p.monthly ? gbp(p.monthly) + " a month already" : "nothing set aside monthly"}</div></div>
+        <div class="amt">${gbp(p.balance)}</div>
+      </button>`).join("")}
+      ${data.debts.filter((d) => { const e = latestEntry(d); return e && e.balance > 0; }).map((d) => `
+        <button class="row acc" style="--acc:var(--red)" data-alloc-debt="${d.id}">
+          <div class="grow"><div class="name">Pay more off ${esc(d.name)}</div>
+          <div class="meta">${gbp(latestPayment(d) || 0)} a month now</div></div>
+          <div class="amt">${gbp(latestEntry(d).balance)}</div>
+        </button>`).join("")}
+    </div>
+    <button class="addbtn" id="allocNewPot">+ Make a new pot for it</button>`,
+    [{ label: "Close", cls: "btn-ghost", fn: closeModal }]);
+  document.querySelectorAll("[data-alloc-pot]").forEach((b) =>
+    b.addEventListener("click", () => { closeModal(); editPot(b.dataset.allocPot); }));
+  document.querySelectorAll("[data-alloc-debt]").forEach((b) =>
+    b.addEventListener("click", () => { closeModal(); updateDebt(b.dataset.allocDebt); }));
+  $("#allocNewPot").addEventListener("click", () => { closeModal(); editPot(null); });
 }
 
 /* Where the money actually went */
@@ -808,20 +843,17 @@ function showBreakdown(incTotal, outTotal, leftover, saving, free) {
           ${r.name === "Expenses" ? `<div class="meta">your day-to-day spending money</div>` : ""}</div>
           <div class="amt">−${gbp(r.amt)}</div>
         </div>`).join("")}
-      <div class="row" style="cursor:default;background:var(--card2)">
-        <div class="grow"><div class="name"><b>Disposable income</b></div>
-        <div class="meta">what's spare once every bill and the spending budget is covered</div></div>
-        <div class="amt ${leftover < 0 ? "over" : ""}">${gbp(leftover)}</div>
-      </div>
       ${saving ? `
       <div class="row" style="cursor:default">
-        <div class="grow"><div class="name">Into savings pots</div></div>
+        <div class="grow"><div class="name">Into savings pots</div>
+        <div class="meta">${data.pots.filter((p) => p.monthly).map((p) => esc(p.name) + " " + gbp(p.monthly)).join(" · ")}</div></div>
         <div class="amt">−${gbp(saving)}</div>
-      </div>
-      <div class="row" style="cursor:default;background:var(--card2)">
-        <div class="grow"><div class="name"><b>Truly free</b></div></div>
-        <div class="amt ${free < 0 ? "over" : ""}">${gbp(free)}</div>
       </div>` : ""}
+      <div class="row" style="cursor:default;background:var(--card2)">
+        <div class="grow"><div class="name"><b>Left to allocate</b></div>
+        <div class="meta">not spoken for by anything yet</div></div>
+        <div class="amt ${free < 0 ? "over" : ""}">${gbp(free)}</div>
+      </div>
     </div>
     <div class="field-hint" style="margin-top:12px">Your spending budget sits inside Expenses, so it's already
     deducted above — the Spending tab just tracks how much of it you've used.</div>`,
@@ -1476,6 +1508,7 @@ function renderYearly() {
     </div>
     <div class="hero">
       <div class="hero-label">Left over across ${incomeYear}</div>
+      <!-- yearly view keeps the simpler "what was left after bills" framing -->
       <div class="hero-value ${totIn - totOut < 0 ? "neg" : ""}">${gbpHero(totIn - totOut)}</div>
       <div class="hero-stats">
         <div class="hstat"><div class="hs-label">Income</div><div class="hs-value">${gbp(totIn)}</div></div>
