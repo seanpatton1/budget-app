@@ -1,5 +1,5 @@
 /* Budget service worker — offline support */
-const CACHE = "budget-v6";
+const CACHE = "budget-v7";
 const ASSETS = [
   "./",
   "./index.html",
@@ -49,7 +49,7 @@ self.addEventListener("fetch", (ev) => {
     caches.match(req).then((hit) => {
       const refresh = fetch(req)
         .then((res) => {
-          const CACHEABLE = [location.origin, "https://cdn.jsdelivr.net"];
+          const CACHEABLE = [location.origin, "https://cdn.jsdelivr.net", "https://fonts.googleapis.com", "https://fonts.gstatic.com"];
           if (res.ok && CACHEABLE.includes(new URL(req.url).origin)) {
             const copy = res.clone();
             caches.open(CACHE).then((c) => c.put(req, copy));

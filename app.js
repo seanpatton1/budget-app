@@ -150,6 +150,22 @@ function gbp(n, dash) {
   const sign = n < 0 ? "-" : "";
   return sign + "£" + Math.abs(n).toLocaleString("en-GB", opts);
 }
+function gbpHero(n) {
+  // big pounds, de-emphasised pence: £1,200<span class=pence>.40</span>
+  if (n == null || isNaN(n)) n = 0;
+  const sign = n < 0 ? "-" : "";
+  const abs = Math.abs(n);
+  const pounds = Math.floor(abs);
+  const pence = Math.round((abs - pounds) * 100);
+  return sign + "£" + pounds.toLocaleString("en-GB") +
+    (pence ? `<span class="pence">.${String(pence).padStart(2, "0")}</span>` : "");
+}
+const ICONS = {
+  download: '<svg viewBox="0 0 24 24"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 21h16"/></svg>',
+  upload: '<svg viewBox="0 0 24 24"><path d="M12 21V9"/><path d="M7 14l5-5 5 5"/><path d="M4 3h16"/></svg>',
+  trash: '<svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 14h10l1-14"/></svg>',
+  signout: '<svg viewBox="0 0 24 24"><path d="M9 21H4V3h5"/><path d="M15 17l5-5-5-5"/><path d="M20 12H9"/></svg>'
+};
 function monthLabel(key) {
   const [y, m] = key.split("-").map(Number);
   return MONTH_NAMES[m - 1] + " " + y;
@@ -238,9 +254,14 @@ function sparkline(hist) {
   const max = Math.max(...pts), min = Math.min(...pts);
   const range = max - min || 1;
   const coords = pts.map((v, i) =>
-    (i / (pts.length - 1)) * 100 + "," + (4 + 20 * (1 - (v - min) / range))
-  ).join(" ");
-  return `<svg class="spark" viewBox="0 0 100 28" preserveAspectRatio="none"><polyline points="${coords}"/></svg>`;
+    ((i / (pts.length - 1)) * 100).toFixed(1) + "," + (4 + 20 * (1 - (v - min) / range)).toFixed(1)
+  );
+  const line = coords.join(" ");
+  const fill = "0,28 " + line + " 100,28";
+  return `<svg class="spark" viewBox="0 0 100 28" preserveAspectRatio="none">
+    <polygon class="spark-fill" points="${fill}"/>
+    <polyline class="spark-line" points="${line}"/>
+  </svg>`;
 }
 function delta(cur, prev, invert) {
   // invert=true → a fall is good (debt); returns a wee arrow chip or ""
@@ -342,9 +363,9 @@ function renderHome() {
           <span class="badge ${o.diff === 0 ? "today" : "due"}">${o.diff === 0 ? "today" : "in " + o.diff + "d"}</span>
           <div class="amt">${gbp(o.amount)}</div>
         </div>`).join("")
-      : `<div class="empty">Nothing left to pay in the next 7 days 🎉</div>`;
+      : `<div class="empty"><b>All caught up</b>Nothing left to pay in the next 7 days</div>`;
   } else {
-    dueHtml = `<div class="empty">Viewing ${monthLabel(selMonth)} — go to the current month to see what's due soon</div>`;
+    dueHtml = `<div class="empty"><b>Viewing ${monthLabel(selMonth)}</b>Head back to the current month to see what's due soon</div>`;
   }
 
   $("#view-home").innerHTML = `
@@ -352,11 +373,14 @@ function renderHome() {
     <div class="sub">Sean &amp; Martina's household budget</div>
     ${monthbarHtml()}
     ${paydayChip}
-    <div class="cards">
-      <div class="card"><div class="label">Income (transferred)</div><div class="value pos">${gbp(incTotal)}</div>${incDelta}</div>
-      <div class="card"><div class="label">Outgoings</div><div class="value">${gbp(outTotal)}</div></div>
-      <div class="card"><div class="label">Disposable income</div><div class="value ${leftover >= 0 ? "pos" : "neg"}">${gbp(leftover)}</div></div>
-      <div class="card"><div class="label">Total debt</div><div class="value ${debt > 0 ? "neg" : "pos"}">${gbp(debt)}</div>${debtDelta}</div>
+    <div class="hero">
+      <div class="hero-label">Disposable income · ${monthLabel(selMonth)}</div>
+      <div class="hero-value ${leftover < 0 ? "neg" : ""}">${gbpHero(leftover)}</div>
+      <div class="hero-stats">
+        <div class="hstat"><div class="hs-label">Income in</div><div class="hs-value">${gbp(incTotal)} ${incDelta}</div></div>
+        <div class="hstat"><div class="hs-label">Outgoings</div><div class="hs-value">${gbp(outTotal)}</div></div>
+        <div class="hstat"><div class="hs-label">Total debt</div><div class="hs-value">${gbp(debt)} ${debtDelta}</div></div>
+      </div>
     </div>
     ${paidHtml}
     <div class="section">
@@ -394,7 +418,7 @@ function renderHome() {
           <div class="meta">${e ? "as of " + monthLabel(e.month) : "no entries yet"}</div></div>
           <div class="amt">${e ? gbp(e.balance) : "—"}</div>
         </button>`;
-      }).join("") : `<div class="empty">No debts — nice</div>`}
+      }).join("") : `<div class="empty"><b>Debt free</b>Nothing owed — long may it last</div>`}
       </div>
     </div>
     <div class="section">
@@ -408,7 +432,7 @@ function renderHome() {
           <div class="meta">${p.target ? gbp(p.balance) + " of " + gbp(p.target) + " · " + pct + "%" : "no target set"}</div></div>
           <div class="amt">${gbp(p.balance)}</div>
         </button>`;
-      }).join("") : `<div class="empty">No pots yet</div>`}
+      }).join("") : `<div class="empty"><b>No pots yet</b>Add one below to start putting money aside</div>`}
       </div>
       <button class="addbtn" id="addPot">+ Add a pot</button>
     </div>
@@ -760,7 +784,7 @@ function renderMore() {
           <div class="grow"><div class="name">${esc(l.name)}</div>
           <div class="meta">${l.date}</div></div>
           <div class="amt">${gbp(l.amount)}</div>
-        </button>`).join("") : `<div class="empty">No one-off expenses logged</div>`}
+        </button>`).join("") : `<div class="empty"><b>Nothing logged yet</b>Use the green + button to log a one-off spend</div>`}
       </div>
       <button class="addbtn" id="addLog">+ Log an expense</button>
     </div>
@@ -771,7 +795,7 @@ function renderMore() {
         <div class="row" style="cursor:default">
           <div class="grow"><div class="name" style="font-size:13px;font-weight:400">${esc(a.text)}</div>
           <div class="meta">${esc(a.device)} · ${new Date(a.ts).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</div></div>
-        </div>`).join("") : `<div class="empty">No changes logged yet</div>`}
+        </div>`).join("") : `<div class="empty"><b>No changes yet</b>Edits made on any device will show up here</div>`}
       </div>
     </div>
 
@@ -796,7 +820,7 @@ function renderMore() {
       <div class="sync-status">${userId
         ? "Signed in as <b>" + esc(userEmail) + "</b> — changes sync live between devices"
         : "Not signed in — data only lives on this device"}</div>
-      ${userId ? `<div class="more-list"><button class="morebtn" id="signOutBtn"><span class="ico">🚪</span>
+      ${userId ? `<div class="more-list"><button class="morebtn" id="signOutBtn"><span class="ico">${ICONS.signout}</span>
         <div>Sign out<div class="desc">Stop syncing on this device</div></div></button></div>` : ""}
     </div>
 
@@ -804,11 +828,11 @@ function renderMore() {
       <div class="section-head"><h2>Backup</h2></div>
       <div class="sync-status">${data.savedAt ? "Last change: " + new Date(data.savedAt).toLocaleString("en-GB") : "No changes yet"}</div>
       <div class="more-list">
-        <button class="morebtn" id="exportBtn"><span class="ico">⬇️</span>
+        <button class="morebtn" id="exportBtn"><span class="ico">${ICONS.download}</span>
           <div>Export data<div class="desc">Save ${DATA_FILENAME} — put it in OneDrive to share</div></div></button>
-        <button class="morebtn" id="importBtn"><span class="ico">⬆️</span>
+        <button class="morebtn" id="importBtn"><span class="ico">${ICONS.upload}</span>
           <div>Import data<div class="desc">Load a ${DATA_FILENAME} file (replaces what's on this device)</div></div></button>
-        <button class="morebtn" id="resetBtn"><span class="ico">🗑️</span>
+        <button class="morebtn" id="resetBtn"><span class="ico">${ICONS.trash}</span>
           <div>Reset to spreadsheet data<div class="desc">Wipe this device's data back to the original Budget 2025 numbers</div></div></button>
       </div>
     </div>`;
@@ -931,10 +955,11 @@ document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeModal
 /* ================= Cloud sync ================= */
 let pushTimer = null;
 function updateCloudDot() {
-  const dot = $("#cloudDot");
-  dot.hidden = !userId;
-  dot.className = "clouddot" + (cloudState === "ok" ? " ok" : cloudState === "offline" ? " offline" : "");
-  dot.title = cloudState === "ok" ? "Synced" : cloudState === "offline" ? "Offline — will sync when back online" : "Syncing…";
+  const pill = $("#syncPill");
+  pill.hidden = !userId;
+  pill.className = "sync-pill" + (cloudState === "ok" ? " ok" : cloudState === "offline" ? " offline" : "");
+  pill.querySelector(".pill-text").textContent =
+    cloudState === "ok" ? "Synced" : cloudState === "offline" ? "Offline" : "Syncing…";
 }
 function schedulePush() {
   if (!userId || !supa) return;
@@ -1059,3 +1084,29 @@ async function boot() {
 }
 boot();
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js");
+
+/* ================= Pull to refresh ================= */
+const ptrEl = document.createElement("div");
+ptrEl.className = "ptr";
+ptrEl.textContent = "Refreshing…";
+document.body.appendChild(ptrEl);
+let ptrStartY = null;
+window.addEventListener("touchstart", (e) => {
+  ptrStartY = window.scrollY === 0 ? e.touches[0].clientY : null;
+}, { passive: true });
+window.addEventListener("touchmove", (e) => {
+  if (ptrStartY == null || !userId || !supa) return;
+  if (e.touches[0].clientY - ptrStartY > 80) {
+    ptrStartY = null;
+    ptrEl.classList.add("show");
+    Promise.resolve(initialCloudSync()).finally(() =>
+      setTimeout(() => ptrEl.classList.remove("show"), 600));
+  }
+}, { passive: true });
+
+/* ================= Theme colour follows light/dark ================= */
+const themeMeta = document.querySelector('meta[name="theme-color"]');
+const lightMq = matchMedia("(prefers-color-scheme: light)");
+function setThemeColor() { themeMeta.content = lightMq.matches ? "#f4f6f9" : "#14181d"; }
+lightMq.addEventListener("change", setThemeColor);
+setThemeColor();

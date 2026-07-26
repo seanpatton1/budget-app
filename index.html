@@ -3,19 +3,22 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#2e9e5b">
+  <meta name="theme-color" content="#14181d">
   <title>Budget</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon-192.png">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <div class="auth-screen" id="authScreen">
     <div class="auth-box">
-      <div class="auth-logo">💷</div>
+      <div class="auth-logo">£</div>
       <h1>Budget</h1>
       <p class="auth-sub" id="authSub">Sign in — use the same account on both phones so you share one budget</p>
       <input id="aEmail" type="email" placeholder="Email" autocomplete="email">
@@ -26,37 +29,40 @@
     </div>
   </div>
 
-  <div class="clouddot" id="cloudDot" title="Sync status" hidden></div>
-
   <div class="app">
-
     <nav class="sidenav" id="sidenav">
-      <div class="brand">💷 Budget</div>
-      <button class="navbtn active" data-view="home"><span class="ico">🏠</span><span>Home</span></button>
-      <button class="navbtn" data-view="income"><span class="ico">💰</span><span>Income</span></button>
-      <button class="navbtn" data-view="outgoings"><span class="ico">📤</span><span>Outgoings</span></button>
-      <button class="navbtn" data-view="debts"><span class="ico">💳</span><span>Debts</span></button>
-      <button class="navbtn" data-view="more"><span class="ico">⚙️</span><span>More</span></button>
+      <div class="brand"><span class="mark">£</span>Budget</div>
+      <button class="navbtn active" data-view="home"><span class="ico"><svg viewBox="0 0 24 24"><path d="M3 10.5L12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9 21v-6h6v6"/></svg></span><span>Home</span></button>
+      <button class="navbtn" data-view="income"><span class="ico"><svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/></svg></span><span>Income</span></button>
+      <button class="navbtn" data-view="outgoings"><span class="ico"><svg viewBox="0 0 24 24"><path d="M7 17L17 7"/><path d="M8 7h9v9"/></svg></span><span>Outgoings</span></button>
+      <button class="navbtn" data-view="debts"><span class="ico"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg></span><span>Debts</span></button>
+      <button class="navbtn" data-view="more"><span class="ico"><svg viewBox="0 0 24 24"><path d="M4 7h16"/><circle cx="9" cy="7" r="2.5"/><path d="M4 17h16"/><circle cx="15" cy="17" r="2.5"/></svg></span><span>More</span></button>
     </nav>
 
-    <main class="content">
-      <section id="view-home" class="view active"></section>
-      <section id="view-income" class="view"></section>
-      <section id="view-outgoings" class="view"></section>
-      <section id="view-debts" class="view"></section>
-      <section id="view-more" class="view"></section>
-    </main>
+    <div class="main-col">
+      <header class="topbar">
+        <div class="wordmark"><span class="mark">£</span>Budget</div>
+        <div class="sync-pill" id="syncPill" hidden><span class="pill-dot"></span><span class="pill-text">Syncing…</span></div>
+      </header>
+      <main class="content">
+        <section id="view-home" class="view active"></section>
+        <section id="view-income" class="view"></section>
+        <section id="view-outgoings" class="view"></section>
+        <section id="view-debts" class="view"></section>
+        <section id="view-more" class="view"></section>
+      </main>
+    </div>
 
     <nav class="tabbar" id="tabbar">
-      <button class="tabbtn active" data-view="home"><span class="ico">🏠</span><span>Home</span></button>
-      <button class="tabbtn" data-view="income"><span class="ico">💰</span><span>Income</span></button>
-      <button class="tabbtn" data-view="outgoings"><span class="ico">📤</span><span>Out</span></button>
-      <button class="tabbtn" data-view="debts"><span class="ico">💳</span><span>Debts</span></button>
-      <button class="tabbtn" data-view="more"><span class="ico">⚙️</span><span>More</span></button>
+      <button class="tabbtn active" data-view="home"><span class="ico"><svg viewBox="0 0 24 24"><path d="M3 10.5L12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9 21v-6h6v6"/></svg></span><span>Home</span></button>
+      <button class="tabbtn" data-view="income"><span class="ico"><svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/></svg></span><span>Income</span></button>
+      <button class="tabbtn" data-view="outgoings"><span class="ico"><svg viewBox="0 0 24 24"><path d="M7 17L17 7"/><path d="M8 7h9v9"/></svg></span><span>Out</span></button>
+      <button class="tabbtn" data-view="debts"><span class="ico"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg></span><span>Debts</span></button>
+      <button class="tabbtn" data-view="more"><span class="ico"><svg viewBox="0 0 24 24"><path d="M4 7h16"/><circle cx="9" cy="7" r="2.5"/><path d="M4 17h16"/><circle cx="15" cy="17" r="2.5"/></svg></span><span>More</span></button>
     </nav>
   </div>
 
-  <button class="fab" id="fabAdd" title="Log an expense">+</button>
+  <button class="fab" id="fabAdd" title="Log an expense"><svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></svg></button>
 
   <div class="modal-backdrop" id="modalBackdrop" hidden>
     <div class="modal" id="modal" role="dialog" aria-modal="true">
