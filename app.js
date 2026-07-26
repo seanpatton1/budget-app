@@ -221,15 +221,18 @@ function renderHome() {
     <div class="section">
       <div class="section-head"><h2>${monthLabel(selMonth)} income</h2><span class="total">${gbp(incTotal)}</span></div>
       <div class="rows">
-        <button class="row" data-goto="income">
-          <div class="grow"><div class="name">Sean → joint</div></div>
-          <div class="amt ${inc && inc.seanT ? "" : "muted"}">${gbp(inc ? inc.seanT : null, true)}</div>
+        <button class="row" id="editIncomeHome">
+          <div class="grow"><div class="name">Sean</div>
+          <div class="meta">earned ${gbp(inc ? inc.sean : null, true)}</div></div>
+          <div class="amt ${inc && inc.seanT ? "" : "muted"}">${gbp(inc ? inc.seanT : null, true)} → joint</div>
         </button>
-        <button class="row" data-goto="income">
-          <div class="grow"><div class="name">Martina → joint</div></div>
-          <div class="amt ${inc && inc.martinaT ? "" : "muted"}">${gbp(inc ? inc.martinaT : null, true)}</div>
+        <button class="row" id="editIncomeHome2">
+          <div class="grow"><div class="name">Martina</div>
+          <div class="meta">earned ${gbp(inc ? inc.martina : null, true)}</div></div>
+          <div class="amt ${inc && inc.martinaT ? "" : "muted"}">${gbp(inc ? inc.martinaT : null, true)} → joint</div>
         </button>
       </div>
+      <button class="addbtn" id="enterSalary">${inc ? "✏️ Edit" : "+ Enter"} ${monthLabel(selMonth)} salaries</button>
     </div>
     <div class="section">
       <div class="section-head"><h2>Outgoings by group</h2><span class="total">${gbp(outTotal)}</span></div>
@@ -261,6 +264,8 @@ function renderHome() {
   bindMonthbar();
   document.querySelectorAll("[data-goto]").forEach((b) =>
     b.addEventListener("click", () => showView(b.dataset.goto)));
+  ["#editIncomeHome", "#editIncomeHome2", "#enterSalary"].forEach((sel) =>
+    $(sel).addEventListener("click", () => editIncome(selMonth)));
 }
 
 function monthbarHtml() {

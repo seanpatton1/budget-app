@@ -1,5 +1,5 @@
 /* Budget service worker — offline support */
-const CACHE = "budget-v3";
+const CACHE = "budget-v4";
 const ASSETS = [
   "./",
   "./index.html",
