@@ -143,7 +143,7 @@ function migrate(d) {
     }
   });
   // Spending categories seeded from the Expenses group — those amounts are the budgets
-  if (!d.cats) {
+  if (!d.cats || !d.cats.length) {
     d.cats = d.outgoings.filter((o) => o.group === "exp")
       .map((o) => ({ id: uid(), name: o.name, budget: o.amount || null }));
     d.cats.push({ id: uid(), name: "Other", budget: null });
@@ -162,7 +162,7 @@ function load() {
     const raw = localStorage.getItem(lsKey());
     if (raw) { const d = JSON.parse(raw); if (d && d.outgoings && d.debts) return migrate(d); }
   } catch (e) {}
-  return defaultData();
+  return migrate(defaultData());
 }
 function persist() {
   snapshotThisMonth();
@@ -609,11 +609,12 @@ function renderHome() {
     .slice(0, 4);
   const spendHtml = `
     <div class="section">
-      <div class="section-head"><h2>Spending</h2><span class="total">${gbp(spent)} of ${gbp(spendBudget)}</span></div>
+      <div class="section-head"><h2>Day-to-day spending</h2><span class="total">${gbp(spent)} of ${gbp(spendBudget)}</span></div>
       <div class="progress"><div class="progress-bar ${spent > spendBudget && spendBudget ? "over" : ""}" style="width:${spendPct}%"></div></div>
       <div class="progress-sub">${spendBudget ? (spent > spendBudget
         ? gbp(spent - spendBudget) + " over budget this month"
-        : gbp(spendBudget - spent) + " left to spend this month") : "Set budgets on the Spending tab"}</div>
+        : gbp(spendBudget - spent) + " left of your spending money") + " · this budget is already inside your outgoings"
+        : "Set budgets on the Spending tab"}</div>
     </div>`;
   const spendCatsHtml = optSection("spendCats", "By category", "", `
     <div class="rows">${topCats.length ? topCats.map((c) => {
@@ -693,16 +694,16 @@ function renderHome() {
     <div class="sub">Sean &amp; Martina's household budget</div>
     ${monthbarHtml()}
     ${paydayChip}
-    <div class="hero">
-      <div class="hero-label">Disposable income · ${monthLabel(selMonth)}</div>
+    <button class="hero" id="heroBtn">
+      <div class="hero-label">Disposable income · ${monthLabel(selMonth)} <span class="hero-info">?</span></div>
       <div class="hero-value ${leftover < 0 ? "neg" : ""}" id="heroValue">${gbpHero(leftover)}</div>
-      ${saving ? `<div class="hero-note">${gbp(free)} free after ${gbp(saving)} into pots</div>` : ""}
+      <div class="hero-note">after everything, including ${gbp(spendBudget)} spending money${saving ? " · " + gbp(free) + " free after " + gbp(saving) + " into pots" : ""}</div>
       <div class="hero-stats">
         <div class="hstat"><div class="hs-label">Income in</div><div class="hs-value">${gbp(incTotal)} ${incDelta}</div></div>
         <div class="hstat"><div class="hs-label">Outgoings</div><div class="hs-value">${gbp(outTotal)}</div></div>
         <div class="hstat"><div class="hs-label">Total debt</div><div class="hs-value">${gbp(debt)} ${debtDelta}</div></div>
       </div>
-    </div>
+    </button>
     ${paidHtml}
     ${spendHtml}
     ${spendCatsHtml}
@@ -784,6 +785,47 @@ function renderHome() {
   const ap = $("#addPot");
   if (ap) ap.addEventListener("click", () => editPot(null));
   $("#customiseHome").addEventListener("click", customiseHome);
+  $("#heroBtn").addEventListener("click", () => showBreakdown(incTotal, outTotal, leftover, saving, free));
+}
+
+/* Where the money actually went */
+function showBreakdown(incTotal, outTotal, leftover, saving, free) {
+  const dp = debtPaymentsTotal();
+  const rows = GROUPS.map((g) => ({ name: g.name, amt: groupTotal(g.id), color: g.color }))
+    .filter((r) => r.amt > 0);
+  if (dp) rows.push({ name: "Debt repayments", amt: dp, color: "var(--red)" });
+
+  openModal(monthLabel(selMonth) + " breakdown", `
+    <div class="rows">
+      <div class="row" style="cursor:default">
+        <div class="grow"><div class="name">Income into joint</div>
+        <div class="meta">Sean and Martina's transfers</div></div>
+        <div class="amt">${gbp(incTotal)}</div>
+      </div>
+      ${rows.map((r) => `
+        <div class="row acc" style="--acc:${r.color};cursor:default">
+          <div class="grow"><div class="name">${esc(r.name)}</div>
+          ${r.name === "Expenses" ? `<div class="meta">your day-to-day spending money</div>` : ""}</div>
+          <div class="amt">−${gbp(r.amt)}</div>
+        </div>`).join("")}
+      <div class="row" style="cursor:default;background:var(--card2)">
+        <div class="grow"><div class="name"><b>Disposable income</b></div>
+        <div class="meta">what's spare once every bill and the spending budget is covered</div></div>
+        <div class="amt ${leftover < 0 ? "over" : ""}">${gbp(leftover)}</div>
+      </div>
+      ${saving ? `
+      <div class="row" style="cursor:default">
+        <div class="grow"><div class="name">Into savings pots</div></div>
+        <div class="amt">−${gbp(saving)}</div>
+      </div>
+      <div class="row" style="cursor:default;background:var(--card2)">
+        <div class="grow"><div class="name"><b>Truly free</b></div></div>
+        <div class="amt ${free < 0 ? "over" : ""}">${gbp(free)}</div>
+      </div>` : ""}
+    </div>
+    <div class="field-hint" style="margin-top:12px">Your spending budget sits inside Expenses, so it's already
+    deducted above — the Spending tab just tracks how much of it you've used.</div>`,
+    [{ label: "Got it", cls: "btn-primary", fn: closeModal }]);
 }
 
 /* Per-device: choose what Home shows */
@@ -1588,7 +1630,7 @@ function renderMore() {
   $("#importBtn").addEventListener("click", importData);
   $("#resetBtn").addEventListener("click", () => {
     if (!confirm("Reset ALL data on this device back to the original spreadsheet numbers?")) return;
-    data = defaultData(); persist(); render();
+    data = migrate(defaultData()); persist(); render();
   });
 }
 
