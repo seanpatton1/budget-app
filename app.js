@@ -355,7 +355,7 @@ function renderHome() {
     <div class="cards">
       <div class="card"><div class="label">Income (transferred)</div><div class="value pos">${gbp(incTotal)}</div>${incDelta}</div>
       <div class="card"><div class="label">Outgoings</div><div class="value">${gbp(outTotal)}</div></div>
-      <div class="card"><div class="label">Leftover</div><div class="value ${leftover >= 0 ? "pos" : "neg"}">${gbp(leftover)}</div></div>
+      <div class="card"><div class="label">Disposable income</div><div class="value ${leftover >= 0 ? "pos" : "neg"}">${gbp(leftover)}</div></div>
       <div class="card"><div class="label">Total debt</div><div class="value ${debt > 0 ? "neg" : "pos"}">${gbp(debt)}</div>${debtDelta}</div>
     </div>
     ${paidHtml}
@@ -529,7 +529,7 @@ function renderIncome() {
       ${chart}
       <div class="cards" style="margin-top:10px">
         <div class="card"><div class="label">Joint income (${incomeYear})</div><div class="value pos">${gbp(yearIn)}</div></div>
-        <div class="card"><div class="label">Leftover (${monthsWithIncome} month${monthsWithIncome === 1 ? "" : "s"})</div>
+        <div class="card"><div class="label">Disposable (${monthsWithIncome} month${monthsWithIncome === 1 ? "" : "s"})</div>
           <div class="value ${yearIn - outTotal * monthsWithIncome >= 0 ? "pos" : "neg"}">${gbp(yearIn - outTotal * monthsWithIncome)}</div></div>
       </div>
     </div>
