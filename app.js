@@ -812,6 +812,14 @@ function renderMore() {
           <div class="meta">Shows a countdown on the Home page</div></div>
           <input class="inline-input" id="paydayInput" type="number" min="1" max="31" inputmode="numeric" placeholder="—" value="${data.settings.payday ?? ""}">
         </div>
+        <div class="row" style="cursor:default">
+          <div class="grow"><div class="name">Appearance</div>
+          <div class="meta">Auto follows this device's setting</div></div>
+          <div class="seg" id="themeSeg">
+            ${["auto", "light", "dark"].map((t) =>
+              `<button data-t="${t}" class="${themePref() === t ? "active" : ""}">${t[0].toUpperCase() + t.slice(1)}</button>`).join("")}
+          </div>
+        </div>
       </div>
     </div>
 
@@ -844,6 +852,8 @@ function renderMore() {
   $("#deviceNameInput").addEventListener("change", (e) => {
     localStorage.setItem("budgetDeviceName", e.target.value.trim());
   });
+  document.querySelectorAll("#themeSeg button").forEach((b) =>
+    b.addEventListener("click", () => setTheme(b.dataset.t)));
   $("#paydayInput").addEventListener("change", (e) => {
     const v = parseInt(e.target.value, 10);
     data.settings.payday = isNaN(v) ? null : Math.min(31, Math.max(1, v));
@@ -1104,9 +1114,20 @@ window.addEventListener("touchmove", (e) => {
   }
 }, { passive: true });
 
-/* ================= Theme colour follows light/dark ================= */
+/* ================= Theme (Auto / Light / Dark) ================= */
 const themeMeta = document.querySelector('meta[name="theme-color"]');
 const lightMq = matchMedia("(prefers-color-scheme: light)");
-function setThemeColor() { themeMeta.content = lightMq.matches ? "#f4f6f9" : "#14181d"; }
-lightMq.addEventListener("change", setThemeColor);
-setThemeColor();
+function themePref() { return localStorage.getItem("budgetTheme") || "auto"; }
+function applyTheme() {
+  const t = themePref();
+  document.documentElement.dataset.theme = t;
+  const effectiveLight = t === "light" || (t === "auto" && lightMq.matches);
+  themeMeta.content = effectiveLight ? "#f4f6f9" : "#14181d";
+}
+function setTheme(t) {
+  localStorage.setItem("budgetTheme", t);
+  applyTheme();
+  if (curView === "more") render();
+}
+lightMq.addEventListener("change", applyTheme);
+applyTheme();
