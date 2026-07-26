@@ -193,7 +193,8 @@ function renderHome() {
         return { ...o, diff };
       })
       .filter((o) => o.diff <= 7)
-      .sort((a, b) => a.diff - b.diff);
+      .sort((a, b) => a.diff - b.diff)
+      .slice(0, 5);
     dueHtml = upcoming.length
       ? upcoming.map((o) => `
         <div class="row" style="cursor:default">
@@ -218,22 +219,48 @@ function renderHome() {
       <div class="card"><div class="label">Total debt</div><div class="value ${debt > 0 ? "neg" : "pos"}">${gbp(debt)}</div></div>
     </div>
     <div class="section">
-      <div class="section-head"><h2>Due soon</h2></div>
-      <div class="rows">${dueHtml}</div>
+      <div class="section-head"><h2>${monthLabel(selMonth)} income</h2><span class="total">${gbp(incTotal)}</span></div>
+      <div class="rows">
+        <button class="row" data-goto="income">
+          <div class="grow"><div class="name">Sean → joint</div></div>
+          <div class="amt ${inc && inc.seanT ? "" : "muted"}">${gbp(inc ? inc.seanT : null, true)}</div>
+        </button>
+        <button class="row" data-goto="income">
+          <div class="grow"><div class="name">Martina → joint</div></div>
+          <div class="amt ${inc && inc.martinaT ? "" : "muted"}">${gbp(inc ? inc.martinaT : null, true)}</div>
+        </button>
+      </div>
     </div>
     <div class="section">
       <div class="section-head"><h2>Outgoings by group</h2><span class="total">${gbp(outTotal)}</span></div>
       <div class="rows">${GROUPS.map((g) => `
-        <button class="row" data-goto-group="${g.id}">
+        <button class="row" data-goto="outgoings">
           <div class="grow"><div class="name">${esc(g.name)}</div></div>
           <div class="amt">${gbp(groupTotal(g.id))}</div>
         </button>`).join("")}
       </div>
+    </div>
+    <div class="section">
+      <div class="section-head"><h2>Debts</h2><span class="total">${gbp(debt)}</span></div>
+      <div class="rows">${data.debts.length ? data.debts.map((d) => {
+        const e = latestEntry(d);
+        return `
+        <button class="row" data-goto="debts">
+          <div class="grow"><div class="name">${esc(d.name)}</div>
+          <div class="meta">${e ? "as of " + monthLabel(e.month) : "no entries yet"}</div></div>
+          <div class="amt">${e ? gbp(e.balance) : "—"}</div>
+        </button>`;
+      }).join("") : `<div class="empty">No debts — nice</div>`}
+      </div>
+    </div>
+    <div class="section">
+      <div class="section-head"><h2>Due soon</h2></div>
+      <div class="rows">${dueHtml}</div>
     </div>`;
 
   bindMonthbar();
-  document.querySelectorAll("[data-goto-group]").forEach((b) =>
-    b.addEventListener("click", () => showView("outgoings")));
+  document.querySelectorAll("[data-goto]").forEach((b) =>
+    b.addEventListener("click", () => showView(b.dataset.goto)));
 }
 
 function monthbarHtml() {

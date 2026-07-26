@@ -184,6 +184,7 @@ h1 { font-size: 22px; margin-bottom: 4px; }
   position: fixed; inset: 0; background: rgba(0,0,0,.6);
   display: flex; align-items: flex-end; justify-content: center; z-index: 100;
 }
+.modal-backdrop[hidden] { display: none; }
 @media (min-width: 900px) { .modal-backdrop { align-items: center; } }
 .modal {
   background: var(--bg2); border: 1px solid var(--line);
