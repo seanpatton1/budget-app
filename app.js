@@ -197,7 +197,11 @@ const ICONS = {
   trash: '<svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 14h10l1-14"/></svg>',
   signout: '<svg viewBox="0 0 24 24"><path d="M9 21H4V3h5"/><path d="M15 17l5-5-5-5"/><path d="M20 12H9"/></svg>',
   wallet: '<svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/></svg>',
-  chart: '<svg viewBox="0 0 24 24"><path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20H2"/></svg>'
+  chart: '<svg viewBox="0 0 24 24"><path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20H2"/></svg>',
+  basket: '<svg viewBox="0 0 24 24"><path d="M3 6h18l-1.5 13.5a2 2 0 01-2 1.5H6.5a2 2 0 01-2-1.5z"/><path d="M8.5 9V5.5a3.5 3.5 0 017 0V9"/></svg>',
+  out: '<svg viewBox="0 0 24 24"><path d="M7 17L17 7"/><path d="M8 7h9v9"/></svg>',
+  card: '<svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>',
+  sliders: '<svg viewBox="0 0 24 24"><path d="M4 7h16"/><circle cx="9" cy="7" r="2.5"/><path d="M4 17h16"/><circle cx="15" cy="17" r="2.5"/></svg>'
 };
 function monthLabel(key) {
   const [y, m] = key.split("-").map(Number);
@@ -446,6 +450,35 @@ function sparkline(hist) {
 const reduceMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 function buzz(ms) { try { navigator.vibrate && navigator.vibrate(ms || 12); } catch (e) {} }
 
+/* Which Home sections this device shows — Martina and Sean can differ */
+const HOME_SECTIONS = [
+  { id: "spendCats", label: "Spending categories", desc: "Progress bar per category", def: false },
+  { id: "big",       label: "Coming up",           desc: "Yearly and quarterly bills ahead", def: false },
+  { id: "inc",       label: "Income breakdown",    desc: "Who paid what into joint", def: false },
+  { id: "groups",    label: "Outgoings by group",  desc: "Totals per group", def: false },
+  { id: "debts",     label: "Debts list",          desc: "Every balance on Home", def: false },
+  { id: "pots",      label: "Savings pots",        desc: "Pot balances and targets", def: false },
+  { id: "cal",       label: "Bill calendar",       desc: "Month grid with bill days", def: false }
+];
+function homePrefs() {
+  try { return JSON.parse(localStorage.getItem("budgetHomeSections") || "{}"); } catch (e) { return {}; }
+}
+function showsOnHome(id) {
+  const p = homePrefs();
+  if (id in p) return p[id];
+  const s = HOME_SECTIONS.find((x) => x.id === id);
+  return s ? s.def : true;
+}
+function setHomeSection(id, on) {
+  const p = homePrefs();
+  p[id] = on;
+  localStorage.setItem("budgetHomeSections", JSON.stringify(p));
+}
+/* Only renders when this device wants the section */
+function optSection(id, title, totalHtml, bodyHtml, extraHtml) {
+  return showsOnHome(id) ? section(id, title, totalHtml, bodyHtml, extraHtml) : "";
+}
+
 function collapsed() {
   try { return JSON.parse(localStorage.getItem("budgetCollapsed") || "[]"); } catch (e) { return []; }
 }
@@ -574,11 +607,15 @@ function renderHome() {
     .filter((c) => c.budget || c.spent)
     .sort((a, b) => b.spent - a.spent)
     .slice(0, 4);
-  const spendHtml = section("spend", "Spending", `${gbp(spent)} of ${gbp(spendBudget)}`, `
-    <div class="progress"><div class="progress-bar ${spent > spendBudget && spendBudget ? "over" : ""}" style="width:${spendPct}%"></div></div>
-    <div class="progress-sub">${spendBudget ? (spent > spendBudget
-      ? gbp(spent - spendBudget) + " over budget this month"
-      : gbp(spendBudget - spent) + " left to spend this month") : "Set budgets on the Spending tab"}</div>
+  const spendHtml = `
+    <div class="section">
+      <div class="section-head"><h2>Spending</h2><span class="total">${gbp(spent)} of ${gbp(spendBudget)}</span></div>
+      <div class="progress"><div class="progress-bar ${spent > spendBudget && spendBudget ? "over" : ""}" style="width:${spendPct}%"></div></div>
+      <div class="progress-sub">${spendBudget ? (spent > spendBudget
+        ? gbp(spent - spendBudget) + " over budget this month"
+        : gbp(spendBudget - spent) + " left to spend this month") : "Set budgets on the Spending tab"}</div>
+    </div>`;
+  const spendCatsHtml = optSection("spendCats", "By category", "", `
     <div class="rows">${topCats.length ? topCats.map((c) => {
       const pct = c.budget ? Math.min(100, Math.round((c.spent / c.budget) * 100)) : null;
       const over = c.budget && c.spent > c.budget;
@@ -604,7 +641,7 @@ function renderHome() {
     })
     .filter(Boolean)
     .sort((a, b) => a.i - b.i);
-  const bigHtml = upcomingBig.length ? section("big", "Coming up", "", `
+  const bigHtml = upcomingBig.length ? optSection("big", "Coming up", "", `
     <div class="rows">${upcomingBig.map(({ o, k, i }) => `
       <button class="row" data-edit-out="${o.id}">
         <div class="grow"><div class="name">${esc(o.name)}</div>
@@ -668,8 +705,10 @@ function renderHome() {
     </div>
     ${paidHtml}
     ${spendHtml}
+    ${spendCatsHtml}
     ${bigHtml}
-    ${section("inc", monthLabel(selMonth) + " income", gbp(incTotal), `
+    ${section("due", "Due soon", "", `<div class="rows">${dueHtml}</div>`)}
+    ${optSection("inc", monthLabel(selMonth) + " income", gbp(incTotal), `
       <div class="rows">
         <button class="row" id="editIncomeHome">
           <div class="grow"><div class="name">Sean</div>
@@ -682,9 +721,8 @@ function renderHome() {
           <div class="amt ${inc && inc.martinaT ? "" : "muted"}">${gbp(inc ? inc.martinaT : null, true)} → joint</div>
         </button>
       </div>`,
-      `<button class="addbtn" id="enterSalary">${inc ? "Edit" : "+ Enter"} ${monthLabel(selMonth)} salaries</button>
-       <button class="addbtn" data-goto="income">See the full income table</button>`)}
-    ${section("groups", "Outgoings by group", gbp(outTotal), `
+      `<button class="addbtn" id="enterSalary">${inc ? "Edit" : "+ Enter"} ${monthLabel(selMonth)} salaries</button>`)}
+    ${optSection("groups", "Outgoings by group", gbp(outTotal), `
       <div class="rows">${GROUPS.map((g) => `
         <button class="row acc" style="--acc:${g.color}" data-goto="outgoings">
           <div class="grow"><div class="name">${esc(g.name)}</div></div>
@@ -697,7 +735,7 @@ function renderHome() {
           <div class="amt">${gbp(debtPaymentsTotal())}</div>
         </button>` : ""}
       </div>`)}
-    ${section("debts", "Debts", gbp(debt), `
+    ${optSection("debts", "Debts", gbp(debt), `
       <div class="rows">${data.debts.length ? data.debts.map((d) => {
         const e = latestEntry(d);
         return `
@@ -708,7 +746,7 @@ function renderHome() {
         </button>`;
       }).join("") : `<div class="empty"><b>Debt free</b>Nothing owed — long may it last</div>`}
       </div>`)}
-    ${section("pots", "Savings pots", gbp(data.pots.reduce((s, p) => s + (p.balance || 0), 0)), `
+    ${optSection("pots", "Savings pots", gbp(data.pots.reduce((s, p) => s + (p.balance || 0), 0)), `
       <div class="rows">${data.pots.length ? data.pots.map((p) => {
         const pct = p.target ? Math.min(100, Math.round((p.balance / p.target) * 100)) : null;
         return `
@@ -721,8 +759,15 @@ function renderHome() {
       }).join("") : `<div class="empty"><b>No pots yet</b>Add one below to start putting money aside</div>`}
       </div>`,
       `<button class="addbtn" id="addPot">+ Add a pot</button>`)}
-    ${section("due", "Due soon", "", `<div class="rows">${dueHtml}</div>`)}
-    ${section("cal", monthLabel(selMonth) + " calendar", "", miniCalendarHtml())}`;
+    ${optSection("cal", monthLabel(selMonth) + " calendar", "", miniCalendarHtml())}
+    <div class="quicklinks">
+      <button class="qlink" data-goto="spending"><span class="ico">${ICONS.basket}</span><span>Spending</span></button>
+      <button class="qlink" data-goto="outgoings"><span class="ico">${ICONS.out}</span><span>Outgoings</span></button>
+      <button class="qlink" data-goto="debts"><span class="ico">${ICONS.card}</span><span>Debts</span></button>
+      <button class="qlink" data-goto="income"><span class="ico">${ICONS.wallet}</span><span>Income</span></button>
+      <button class="qlink" data-goto="yearly"><span class="ico">${ICONS.chart}</span><span>Year</span></button>
+      <button class="qlink" id="customiseHome"><span class="ico">${ICONS.sliders}</span><span>Customise</span></button>
+    </div>`;
 
   animateHero($("#heroValue"), leftover);
   bindMonthbar();
@@ -738,6 +783,23 @@ function renderHome() {
     b.addEventListener("click", () => editPot(b.dataset.editPot)));
   const ap = $("#addPot");
   if (ap) ap.addEventListener("click", () => editPot(null));
+  $("#customiseHome").addEventListener("click", customiseHome);
+}
+
+/* Per-device: choose what Home shows */
+function customiseHome() {
+  openModal("What shows on Home", `
+    <div class="field-hint" style="margin-bottom:12px">Just for this device — Martina's phone keeps its own layout.
+    The disposable income, what's paid, spending and due soon always show.</div>
+    <div class="rows">${HOME_SECTIONS.map((s) => `
+      <label class="row" style="cursor:pointer">
+        <div class="grow"><div class="name">${esc(s.label)}</div><div class="meta">${esc(s.desc)}</div></div>
+        <input type="checkbox" class="paidbox" data-home-sec="${s.id}" ${showsOnHome(s.id) ? "checked" : ""}>
+      </label>`).join("")}
+    </div>`,
+    [{ label: "Done", cls: "btn-primary", fn: () => { closeModal(); render(); } }]);
+  document.querySelectorAll("[data-home-sec]").forEach((cb) =>
+    cb.addEventListener("change", () => { setHomeSection(cb.dataset.homeSec, cb.checked); buzz(8); }));
 }
 
 /* ================= Pots ================= */
@@ -1427,6 +1489,8 @@ function renderMore() {
           <div>Income<div class="desc">Month-by-month salaries and the year chart</div></div></button>
         <button class="morebtn" data-goto="yearly"><span class="ico">${ICONS.chart}</span>
           <div>Yearly review<div class="desc">The whole year on one page</div></div></button>
+        <button class="morebtn" id="customiseHomeMore"><span class="ico">${ICONS.sliders}</span>
+          <div>Customise Home<div class="desc">Choose what shows on this device's home page</div></div></button>
       </div>
     </div>
 
@@ -1509,6 +1573,7 @@ function renderMore() {
   });
   document.querySelectorAll("[data-goto]").forEach((b) =>
     b.addEventListener("click", () => showView(b.dataset.goto)));
+  $("#customiseHomeMore").addEventListener("click", customiseHome);
   $("#addNote").addEventListener("click", () => editNote(null));
   document.querySelectorAll("[data-edit-note]").forEach((b) =>
     b.addEventListener("click", () => editNote(b.dataset.editNote)));
